@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music Video Evaluation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        h1 {
+            text-align: center;
+        }
+        .video-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        .video-wrapper {
+            text-align: center;
+            margin: 0 20px;
+        }
+        .questions {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .questions p {
+            margin: 10px 0;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            text-align: center;
+            max-width: 500px;
+            margin: auto;
+        }
+        .close-btn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Music Video Evaluation</h1>
+    <p style="font-size: 18px; color: #d9534f; font-weight: bold; margin-top: -10px;">Please wear headphones to listen to the music</p>
+    <form id="evaluation-form" action="https://docs.google.com/forms/d/e/1FAIpQLScd_fMSycVkIGJcrI1YeUoIqts_Fa_Wl4iYI3tkGQvBs5__6w/formResponse" method="POST" target="_self">
+        <div id="video-pairs"></div>
+        <button type="submit">Submit</button>
+    </form>
+
+    <div id="thank-you-modal" class="modal">
+        <div class="modal-content">
+            <p id="verification-code-message">Thank you for your submission! Verification Code: </p>
+            <button class="close-btn" id="close-btn">OK</button>
+        </div>
+    </div>
+
+    <script>
+        const competitorMethods = ["audiox", "gvmgen", "mumu", "sonique", "vidmuse"];
+        const datasets = ["MovieGen", "OES"];
+        const totalPairs = 5;
+        
+        // Store comparison info for each pair
+        let pairInfo = Array(totalPairs).fill(null).map(() => ({
+            competitor: "",
+            dataset: "",
+            filename: "",
+            oursInA: false
+        }));
+
+        // Available samples per dataset
+        const movieGenSamples = ["101.mp4", "109.mp4", "111.mp4", "112.mp4", "113.mp4", "115.mp4", "117.mp4", "119.mp4", 
+            "147.mp4", "148.mp4", "151.mp4", "167.mp4", "169.mp4", "212.mp4", "225.mp4", "23.mp4", "234.mp4", "238.mp4",
+            "256.mp4", "266.mp4", "271.mp4", "282.mp4", "284.mp4", "285.mp4", "288.mp4", "290.mp4", "301.mp4", "307.mp4",
+            "311.mp4", "313.mp4", "32.mp4", "326.mp4", "327.mp4", "33.mp4", "336.mp4", "349.mp4", "352.mp4", "358.mp4",
+            "360.mp4", "362.mp4", "363.mp4", "365.mp4", "371.mp4", "372.mp4", "375.mp4", "394.mp4", "403.mp4", "405.mp4",
+            "416.mp4", "417.mp4", "421.mp4", "422.mp4", "434.mp4", "44.mp4", "447.mp4", "45.mp4", "455.mp4", "467.mp4",
+            "474.mp4", "478.mp4", "480.mp4", "481.mp4", "482.mp4", "491.mp4", "494.mp4", "495.mp4", "51.mp4", "510.mp4",
+            "513.mp4", "518.mp4", "521.mp4", "525.mp4", "527.mp4", "530.mp4", "536.mp4", "57.mp4", "62.mp4", "66.mp4",
+            "69.mp4", "78.mp4", "79.mp4", "99.mp4"];
+
+        const oesSamples = ["1000_1.mp4", "1000_12.mp4", "1000_8.mp4", "1000_9.mp4", "1002_1.mp4", "1004_0.mp4", 
+            "1004_1.mp4", "1004_10.mp4", "1004_8.mp4", "1006_0.mp4", "1006_10.mp4", "1006_6.mp4", "1008_3.mp4",
+            "1009_4.mp4", "1009_8.mp4", "1010_0.mp4", "1010_10.mp4", "1010_15.mp4", "1010_17.mp4", "1010_3.mp4",
+            "1012_0.mp4", "1012_10.mp4", "1012_11.mp4", "1012_14.mp4", "1012_3.mp4", "1012_5.mp4", "1012_7.mp4",
+            "28_0.mp4", "28_3.mp4", "28_4.mp4", "288_1.mp4", "288_2.mp4", "288_3.mp4", "288_5.mp4", "288_6.mp4",
+            "288_7.mp4", "293_1.mp4", "293_2.mp4", "293_4.mp4", "293_6.mp4", "295_0.mp4", "296_0.mp4", "297_0.mp4",
+            "298_0.mp4", "300_0.mp4", "301_0.mp4", "301_10.mp4", "301_7.mp4", "301_8.mp4", "301_9.mp4", "302_0.mp4",
+            "303_9.mp4", "480_0.mp4", "480_11.mp4", "480_2.mp4", "480_7.mp4", "480_8.mp4", "480_9.mp4", "482_1.mp4",
+            "483_7.mp4", "488_0.mp4", "488_2.mp4", "488_6.mp4", "492_1.mp4", "492_2.mp4", "492_3.mp4", "492_5.mp4",
+            "492_6.mp4", "492_7.mp4"];
+
+        // Google Form entry IDs for 5 pairs × 2 questions each = 10 entries
+        const qualityEntryIDs = [
+            "entry.1905478767",  // Q1-1
+            "entry.504508340",   // Q2-1
+            "entry.2028907789",  // Q3-1
+            "entry.2080477341",  // Q4-1
+            "entry.1431813866"   // Q5-1
+        ];
+
+        const syncEntryIDs = [
+            "entry.125628258",   // Q1-2
+            "entry.1371077143",  // Q2-2
+            "entry.1341468949",  // Q3-2
+            "entry.581360649",   // Q4-2
+            "entry.605505831"    // Q5-2
+        ];
+
+        const timeEntryID = "entry.545734147";
+        const codeEntryID = "entry.880838736";
+
+        let startTime;
+
+        function getVideoPath(method, dataset, filename) {
+            return `./human_eval_play/${method}/${dataset}/${filename}`;
+        }
+
+        function getRandomMethod() {
+            return competitorMethods[Math.floor(Math.random() * competitorMethods.length)];
+        }
+
+        function selectSamples() {
+            // Randomly decide: 3 MovieGen + 2 OES, or 2 MovieGen + 3 OES
+            const movieGenFirst = Math.random() < 0.5;
+            const movieGenCount = movieGenFirst ? 3 : 2;
+            const oesCount = movieGenFirst ? 2 : 3;
+
+            const selectedSamples = [];
+
+            // Select MovieGen samples
+            const usedMovieGen = new Set();
+            for (let i = 0; i < movieGenCount; i++) {
+                let idx;
+                do {
+                    idx = Math.floor(Math.random() * movieGenSamples.length);
+                } while (usedMovieGen.has(idx));
+                usedMovieGen.add(idx);
+                selectedSamples.push({ dataset: "MovieGen", filename: movieGenSamples[idx] });
+            }
+
+            // Select OES samples
+            const usedOES = new Set();
+            for (let i = 0; i < oesCount; i++) {
+                let idx;
+                do {
+                    idx = Math.floor(Math.random() * oesSamples.length);
+                } while (usedOES.has(idx));
+                usedOES.add(idx);
+                selectedSamples.push({ dataset: "OES", filename: oesSamples[idx] });
+            }
+
+            // Shuffle the samples
+            for (let i = selectedSamples.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [selectedSamples[i], selectedSamples[j]] = [selectedSamples[j], selectedSamples[i]];
+            }
+
+            return selectedSamples;
+        }
+
+        function createVideoPair(index, sample) {
+            const competitor = getRandomMethod();
+            const oursInA = Math.random() < 0.5;
+            
+            // Store for later processing
+            pairInfo[index] = {
+                competitor: competitor,
+                dataset: sample.dataset,
+                filename: sample.filename,
+                oursInA: oursInA
+            };
+
+            const oursVideo = getVideoPath("ours", sample.dataset, sample.filename);
+            const compVideo = getVideoPath(competitor, sample.dataset, sample.filename);
+
+            return `
+                <div class="video-container">
+                    <div class="video-wrapper">
+                        <video width="480" height="360" controls>
+                            <source src="${oursInA ? oursVideo : compVideo}" type="video/mp4">
+                            Your browser does not support the video tag.
+                        </video>
+                        <p>Music Video A</p>
+                    </div>
+                    <div class="video-wrapper">
+                        <video width="480" height="360" controls>
+                            <source src="${oursInA ? compVideo : oursVideo}" type="video/mp4">
+                            Your browser does not support the video tag.
+                        </video>
+                        <p>Music Video B</p>
+                    </div>
+                </div>
+                <div class="questions">
+                    <p>Q${index + 1}-1: Which music do you think has the better music quality?</p>
+                    <label><input type="radio" name="quality${index}" value="A" required> A is better</label><br>
+                    <label><input type="radio" name="quality${index}" value="none" required> Cannot tell</label><br>
+                    <label><input type="radio" name="quality${index}" value="B" required> B is better</label><br>
+
+                    <p>Q${index + 1}-2: Which background music has better synchronization between music beats and visual dynamics?</p>
+                    <label><input type="radio" name="sync${index}" value="A" required> A is better</label><br>
+                    <label><input type="radio" name="sync${index}" value="none" required> Cannot tell</label><br>
+                    <label><input type="radio" name="sync${index}" value="B" required> B is better</label><br>
+                </div>
+            `;
+        }
+
+        function loadVideoPairs() {
+            const videoPairsContainer = document.getElementById('video-pairs');
+            const selectedSamples = selectSamples();
+
+            for (let i = 0; i < totalPairs; i++) {
+                videoPairsContainer.innerHTML += createVideoPair(i, selectedSamples[i]);
+            }
+        }
+
+        function generateVerificationCode(duration) {
+            const prefix = duration > 160 ? "54088" : "30678";
+            const characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
+            let code = '';
+            for (let i = 0; i < 3; i++) {
+                code += characters[Math.floor(Math.random() * characters.length)];
+            }
+            return prefix + code;
+        }
+
+        document.getElementById('evaluation-form').addEventListener('submit', async function (event) {
+            event.preventDefault();
+
+            const formData = new FormData(event.target);
+            const transformedData = {};
+
+            // Process each pair's quality question
+            for (let i = 0; i < totalPairs; i++) {
+                const picked = formData.get(`quality${i}`);
+                const info = pairInfo[i];
+                const competitor = info.competitor;
+                const dataset = info.dataset;
+                const oursInA = info.oursInA;
+
+                let resultStr = "";
+                if (picked === "none") {
+                    resultStr = `Ours=${competitor} (${dataset})`;
+                } else if (picked === "A") {
+                    if (oursInA) {
+                        resultStr = `Ours>${competitor} (${dataset})`;
+                    } else {
+                        resultStr = `Ours<${competitor} (${dataset})`;
+                    }
+                } else { // picked === "B"
+                    if (!oursInA) {
+                        resultStr = `Ours>${competitor} (${dataset})`;
+                    } else {
+                        resultStr = `Ours<${competitor} (${dataset})`;
+                    }
+                }
+                transformedData[qualityEntryIDs[i]] = resultStr;
+            }
+
+            // Process each pair's sync question
+            for (let i = 0; i < totalPairs; i++) {
+                const picked = formData.get(`sync${i}`);
+                const info = pairInfo[i];
+                const competitor = info.competitor;
+                const dataset = info.dataset;
+                const oursInA = info.oursInA;
+
+                let resultStr = "";
+                if (picked === "none") {
+                    resultStr = `Ours=${competitor} (${dataset})`;
+                } else if (picked === "A") {
+                    if (oursInA) {
+                        resultStr = `Ours>${competitor} (${dataset})`;
+                    } else {
+                        resultStr = `Ours<${competitor} (${dataset})`;
+                    }
+                } else { // picked === "B"
+                    if (!oursInA) {
+                        resultStr = `Ours>${competitor} (${dataset})`;
+                    } else {
+                        resultStr = `Ours<${competitor} (${dataset})`;
+                    }
+                }
+                transformedData[syncEntryIDs[i]] = resultStr;
+            }
+
+            const endTime = new Date().getTime();
+            const duration = (endTime - startTime) / 1000;
+
+            const verificationCode = generateVerificationCode(duration);
+
+            transformedData[timeEntryID] = duration;
+            transformedData[codeEntryID] = verificationCode;
+
+            try {
+                await fetch(event.target.action, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    mode: 'no-cors',
+                    body: new URLSearchParams(transformedData)
+                });
+                
+                document.getElementById('verification-code-message').textContent += verificationCode;
+                document.getElementById('thank-you-modal').style.display = 'flex';
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred while submitting your evaluation. Please try again.');
+            }
+        });
+
+        document.addEventListener('click', function (event) {
+            if (!startTime && event.target.closest('input[type="radio"]')) {
+                startTime = new Date().getTime();
+            }
+        });
+
+        document.getElementById('close-btn').addEventListener('click', function() {
+            location.reload();
+        });
+
+        window.onload = loadVideoPairs;
+    </script>
+</body>
+</html>
