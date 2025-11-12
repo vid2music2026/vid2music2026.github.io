@@ -77,14 +77,16 @@
     <script>
         const competitorMethods = ["audiox", "gvmgen", "mumu", "sonique", "vidmuse"];
         const datasets = ["MovieGen", "OES"];
-        const totalPairs = 5;
+        const totalPairs = 10;
         
         // Store comparison info for each pair
         let pairInfo = Array(totalPairs).fill(null).map(() => ({
             competitor: "",
             dataset: "",
             filename: "",
-            oursInA: false
+            oursInA: false,
+            startTime: 0,
+            endTime: 0
         }));
 
         // Available samples per dataset
@@ -109,13 +111,18 @@
             "483_7.mp4", "488_0.mp4", "488_2.mp4", "488_6.mp4", "492_1.mp4", "492_2.mp4", "492_3.mp4", "492_5.mp4",
             "492_6.mp4", "492_7.mp4"];
 
-        // Google Form entry IDs for 5 pairs × 2 questions each = 10 entries
+        // Google Form entry IDs for 10 pairs × 2 questions each = 20 entries
         const qualityEntryIDs = [
             "entry.1905478767",  // Q1-1
             "entry.504508340",   // Q2-1
             "entry.2028907789",  // Q3-1
             "entry.2080477341",  // Q4-1
-            "entry.1431813866"   // Q5-1
+            "entry.1431813866",  // Q5-1
+            "entry.624005883",   // Q6-1
+            "entry.944733618",   // Q7-1
+            "entry.713283727",   // Q8-1
+            "entry.232659816",   // Q9-1
+            "entry.1553381094"   // Q10-1
         ];
 
         const syncEntryIDs = [
@@ -123,7 +130,12 @@
             "entry.1371077143",  // Q2-2
             "entry.1341468949",  // Q3-2
             "entry.581360649",   // Q4-2
-            "entry.605505831"    // Q5-2
+            "entry.605505831",   // Q5-2
+            "entry.1904409635",  // Q6-2
+            "entry.837080567",   // Q7-2
+            "entry.1770332293",  // Q8-2
+            "entry.160306722",   // Q9-2
+            "entry.413480097"    // Q10-2
         ];
 
         const timeEntryID = "entry.545734147";
@@ -131,7 +143,7 @@
 
         let startTime;
 
-        function getVideoPath(method, dataset, filename) {
+        function getVideoPath(method, dataset, filename, startTime = 0, endTime = 0) {
             return `./human_eval_play/${method}/${dataset}/${filename}`;
         }
 
@@ -139,37 +151,69 @@
             return competitorMethods[Math.floor(Math.random() * competitorMethods.length)];
         }
 
+        function getRandomOESTimeRange() {
+            // Generate a random start time between 0 and 5 seconds for safety
+            // This ensures we have room for the 10-second clip
+            const maxStart = 12;
+            const startTime = Math.floor(Math.random() * (maxStart + 1));
+            const endTime = startTime + 10;
+            return { startTime, endTime };
+        }
+
         function selectSamples() {
-            // Randomly decide: 3 MovieGen + 2 OES, or 2 MovieGen + 3 OES
-            const movieGenFirst = Math.random() < 0.5;
-            const movieGenCount = movieGenFirst ? 3 : 2;
-            const oesCount = movieGenFirst ? 2 : 3;
+            // Always use 5 MovieGen + 5 OES (total 10 unique videos)
+            const movieGenCount = 5;
+            const oesCount = 5;
 
             const selectedSamples = [];
+            const usedFilenames = new Set(); // Track all used filenames to ensure uniqueness
 
-            // Select MovieGen samples
-            const usedMovieGen = new Set();
+            // Select MovieGen samples (no duplicates)
+            const usedMovieGenIndices = new Set();
             for (let i = 0; i < movieGenCount; i++) {
                 let idx;
+                let attempts = 0;
                 do {
                     idx = Math.floor(Math.random() * movieGenSamples.length);
-                } while (usedMovieGen.has(idx));
-                usedMovieGen.add(idx);
-                selectedSamples.push({ dataset: "MovieGen", filename: movieGenSamples[idx] });
+                    attempts++;
+                    if (attempts > 1000) {
+                        console.error('Too many attempts to find unique MovieGen sample');
+                        break;
+                    }
+                } while (usedMovieGenIndices.has(idx));
+                
+                usedMovieGenIndices.add(idx);
+                const filename = movieGenSamples[idx];
+                usedFilenames.add(filename);
+                selectedSamples.push({ dataset: "MovieGen", filename: filename });
             }
 
-            // Select OES samples
-            const usedOES = new Set();
+            // Select OES samples (no duplicates)
+            const usedOESIndices = new Set();
             for (let i = 0; i < oesCount; i++) {
                 let idx;
+                let attempts = 0;
                 do {
                     idx = Math.floor(Math.random() * oesSamples.length);
-                } while (usedOES.has(idx));
-                usedOES.add(idx);
-                selectedSamples.push({ dataset: "OES", filename: oesSamples[idx] });
+                    attempts++;
+                    if (attempts > 1000) {
+                        console.error('Too many attempts to find unique OES sample');
+                        break;
+                    }
+                } while (usedOESIndices.has(idx));
+                
+                usedOESIndices.add(idx);
+                const filename = oesSamples[idx];
+                usedFilenames.add(filename);
+                selectedSamples.push({ dataset: "OES", filename: filename });
             }
 
-            // Shuffle the samples
+            // Verify we have 10 unique filenames
+            if (usedFilenames.size !== 10) {
+                console.warn(`Expected 10 unique videos, but got ${usedFilenames.size}`);
+            }
+
+            // Shuffle the samples to randomize order
             for (let i = selectedSamples.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [selectedSamples[i], selectedSamples[j]] = [selectedSamples[j], selectedSamples[i]];
@@ -182,28 +226,39 @@
             const competitor = getRandomMethod();
             const oursInA = Math.random() < 0.5;
             
+            // For OES videos, generate random time range
+            let startTime = 0;
+            let endTime = 0;
+            if (sample.dataset === "OES") {
+                const timeRange = getRandomOESTimeRange();
+                startTime = timeRange.startTime;
+                endTime = timeRange.endTime;
+            }
+            
             // Store for later processing
             pairInfo[index] = {
                 competitor: competitor,
                 dataset: sample.dataset,
                 filename: sample.filename,
-                oursInA: oursInA
+                oursInA: oursInA,
+                startTime: startTime,
+                endTime: endTime
             };
 
-            const oursVideo = getVideoPath("ours", sample.dataset, sample.filename);
-            const compVideo = getVideoPath(competitor, sample.dataset, sample.filename);
+            const oursVideo = getVideoPath("ours", sample.dataset, sample.filename, startTime, endTime);
+            const compVideo = getVideoPath(competitor, sample.dataset, sample.filename, startTime, endTime);
 
             return `
                 <div class="video-container">
                     <div class="video-wrapper">
-                        <video width="480" height="360" controls>
+                        <video width="480" height="360" controls preload="metadata" class="video-player" data-pair-index="${index}" data-is-video-a="true">
                             <source src="${oursInA ? oursVideo : compVideo}" type="video/mp4">
                             Your browser does not support the video tag.
                         </video>
                         <p>Music Video A</p>
                     </div>
                     <div class="video-wrapper">
-                        <video width="480" height="360" controls>
+                        <video width="480" height="360" controls preload="metadata" class="video-player" data-pair-index="${index}" data-is-video-a="false">
                             <source src="${oursInA ? compVideo : oursVideo}" type="video/mp4">
                             Your browser does not support the video tag.
                         </video>
@@ -213,15 +268,181 @@
                 <div class="questions">
                     <p>Q${index + 1}-1: Which music do you think has the better music quality?</p>
                     <label><input type="radio" name="quality${index}" value="A" required> A is better</label><br>
-                    <label><input type="radio" name="quality${index}" value="none" required> Cannot tell</label><br>
                     <label><input type="radio" name="quality${index}" value="B" required> B is better</label><br>
 
                     <p>Q${index + 1}-2: Which background music has better synchronization between music beats and visual dynamics?</p>
                     <label><input type="radio" name="sync${index}" value="A" required> A is better</label><br>
-                    <label><input type="radio" name="sync${index}" value="none" required> Cannot tell</label><br>
                     <label><input type="radio" name="sync${index}" value="B" required> B is better</label><br>
                 </div>
             `;
+        }
+
+        function enforceVideoTimeConstraints() {
+            const videos = document.querySelectorAll('.video-player');
+            
+            videos.forEach(video => {
+                const pairIndex = parseInt(video.dataset.pairIndex);
+                const info = pairInfo[pairIndex];
+                
+                // Only enforce for OES videos
+                if (info && info.dataset === "OES") {
+                    const startTime = info.startTime;
+                    const endTime = info.endTime;
+                    
+                    // Store time bounds as data attributes for easier debugging
+                    video.dataset.startTime = startTime;
+                    video.dataset.endTime = endTime;
+                    video.dataset.timeConstrained = "true";
+                    
+                    // Mark if this video has been initialized
+                    let isInitialized = false;
+                    
+                    // Set initial time when enough data is loaded
+                    const initializeVideo = function() {
+                        // Need readyState >= 2 (HAVE_CURRENT_DATA) to successfully seek
+                        if (!isInitialized && video.readyState >= 2) {
+                            try {
+                                video.currentTime = startTime;
+                                isInitialized = true;
+                                video.dataset.initialized = "true";
+                                console.log(`Initialized video at pair ${pairIndex} to start at ${startTime}s (readyState: ${video.readyState})`);
+                            } catch (e) {
+                                console.warn(`Failed to set initial time for pair ${pairIndex}:`, e);
+                            }
+                        }
+                    };
+                    
+                    // Try multiple events to ensure initialization
+                    video.addEventListener('loadedmetadata', initializeVideo);
+                    video.addEventListener('loadeddata', initializeVideo);
+                    video.addEventListener('canplay', initializeVideo);
+                    video.addEventListener('canplaythrough', initializeVideo);
+                    
+                    // Check if already loaded
+                    if (video.readyState >= 2) {
+                        initializeVideo();
+                    }
+                    
+                    // Multiple fallback checks at increasing intervals for slow-loading videos
+                    setTimeout(() => {
+                        if (!isInitialized && video.readyState >= 2) {
+                            initializeVideo();
+                        }
+                    }, 500);
+                    
+                    setTimeout(() => {
+                        if (!isInitialized && video.readyState >= 2) {
+                            initializeVideo();
+                        }
+                    }, 1000);
+                    
+                    setTimeout(() => {
+                        if (!isInitialized && video.readyState >= 2) {
+                            initializeVideo();
+                        }
+                    }, 2000);
+                    
+                    setTimeout(() => {
+                        if (!isInitialized && video.readyState >= 2) {
+                            initializeVideo();
+                        } else if (!isInitialized) {
+                            console.warn(`Video at pair ${pairIndex} still not initialized after 3s, readyState: ${video.readyState}`);
+                        }
+                    }, 3000);
+                    
+                    // Monitor playback and enforce bounds - use arrow function to maintain context
+                    const onTimeUpdate = function() {
+                        // Try to initialize if not done yet (need readyState >= 2 for seeking)
+                        if (!isInitialized && this.readyState >= 2) {
+                            try {
+                                this.currentTime = startTime;
+                                isInitialized = true;
+                                video.dataset.initialized = "true";
+                                console.log(`Late initialized video at pair ${pairIndex} via timeupdate`);
+                            } catch (e) {
+                                // Ignore
+                            }
+                        }
+                        
+                        // Enforce time boundaries only if initialized
+                        if (isInitialized) {
+                            if (this.currentTime < startTime - 0.1) {
+                                this.currentTime = startTime;
+                            }
+                            if (this.currentTime >= endTime - 0.1) {
+                                this.pause();
+                                this.currentTime = startTime;
+                            }
+                        }
+                    };
+                    video.addEventListener('timeupdate', onTimeUpdate);
+                    
+                    // Prevent seeking outside the allowed range
+                    const onSeeking = function() {
+                        const targetTime = this.currentTime;
+                        if (targetTime < startTime) {
+                            this.currentTime = startTime;
+                        } else if (targetTime > endTime) {
+                            this.currentTime = Math.min(endTime - 0.1, this.duration);
+                        }
+                    };
+                    video.addEventListener('seeking', onSeeking);
+                    
+                    const onSeeked = function() {
+                        if (this.currentTime < startTime) {
+                            this.currentTime = startTime;
+                        } else if (this.currentTime >= endTime) {
+                            this.currentTime = startTime;
+                        }
+                    };
+                    video.addEventListener('seeked', onSeeked);
+                    
+                    // Handle play event to ensure we're in range
+                    const onPlay = function() {
+                        const videoElement = this;
+                        
+                        if (!isInitialized) {
+                            if (videoElement.readyState >= 2) {
+                                try {
+                                    videoElement.currentTime = startTime;
+                                    isInitialized = true;
+                                    video.dataset.initialized = "true";
+                                    console.log(`Late initialized video at pair ${pairIndex} via play (readyState: ${videoElement.readyState})`);
+                                } catch (e) {
+                                    console.error(`Error setting time on play for pair ${pairIndex}:`, e);
+                                }
+                            } else {
+                                // Video not ready yet, pause and wait a bit
+                                console.log(`Video at pair ${pairIndex} not ready on play, pausing and waiting... (readyState: ${videoElement.readyState})`);
+                                videoElement.pause();
+                                setTimeout(() => {
+                                    if (videoElement.readyState >= 2 && !isInitialized) {
+                                        try {
+                                            videoElement.currentTime = startTime;
+                                            isInitialized = true;
+                                            video.dataset.initialized = "true";
+                                            console.log(`Delayed initialization succeeded for pair ${pairIndex}`);
+                                        } catch (e) {
+                                            console.error(`Delayed initialization failed for pair ${pairIndex}:`, e);
+                                        }
+                                    }
+                                }, 500);
+                            }
+                        }
+                        
+                        if (isInitialized && (videoElement.currentTime < startTime || videoElement.currentTime >= endTime)) {
+                            videoElement.currentTime = startTime;
+                        }
+                    };
+                    video.addEventListener('play', onPlay);
+                    
+                    // Also handle ended event
+                    const onEnded = function() {
+                        this.currentTime = startTime;
+                    };
+                    video.addEventListener('ended', onEnded);
+                }
+            });
         }
 
         function loadVideoPairs() {
@@ -231,6 +452,13 @@
             for (let i = 0; i < totalPairs; i++) {
                 videoPairsContainer.innerHTML += createVideoPair(i, selectedSamples[i]);
             }
+            
+            // Enforce time constraints after videos are in DOM
+            // Use setTimeout to ensure DOM is fully updated and videos start loading
+            setTimeout(() => {
+                enforceVideoTimeConstraints();
+                console.log('Time constraints applied to all OES videos');
+            }, 500);
         }
 
         function generateVerificationCode(duration) {
@@ -258,9 +486,7 @@
                 const oursInA = info.oursInA;
 
                 let resultStr = "";
-                if (picked === "none") {
-                    resultStr = `Ours=${competitor} (${dataset})`;
-                } else if (picked === "A") {
+                if (picked === "A") {
                     if (oursInA) {
                         resultStr = `Ours>${competitor} (${dataset})`;
                     } else {
@@ -285,9 +511,7 @@
                 const oursInA = info.oursInA;
 
                 let resultStr = "";
-                if (picked === "none") {
-                    resultStr = `Ours=${competitor} (${dataset})`;
-                } else if (picked === "A") {
+                if (picked === "A") {
                     if (oursInA) {
                         resultStr = `Ours>${competitor} (${dataset})`;
                     } else {
@@ -343,3 +567,5 @@
     </script>
 </body>
 </html>
+
+
